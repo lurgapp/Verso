@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ArticleStatus {
+  PUBLISHED
+  DELETED
+  MODERATED
+}
+
+model Article {
+  internalId   String        @id @default(uuid()) @db.Uuid
+  publicId     String        @unique @db.VarChar(12)
+  title        String        @db.VarChar(240)
+  content      Json
+  html         String        @db.Text
+  format       String        @default("tiptap-json") @db.VarChar(32)
+  schemaVersion Int          @default(1)
+  editKeyHash  String        @db.Char(64)
+  version      Int           @default(1)
+  viewCount    Int           @default(0)
+  showViewCount Boolean      @default(true)
+  status       ArticleStatus @default(PUBLISHED)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  reports      Report[]
+  versions     ArticleVersion[]
+
+  @@index([status, createdAt])
+}
+
+model Media {
+  id        String   @id @db.VarChar(64)
+  objectKey String   @unique @db.VarChar(128)
+  mimeType  String   @db.VarChar(64)
+  bytes     Int
+  width     Int
+  height    Int
+  animated  Boolean  @default(false)
+  frames    Int      @default(1)
+  durationMs Int?
+  posterKey String?  @db.VarChar(128)
+  thumbnailKey String? @db.VarChar(128)
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id             String   @id @default(uuid()) @db.Uuid
+  articleId      String   @db.Uuid
+  article        Article  @relation(fields: [articleId], references: [internalId], onDelete: Cascade)
+  reason         String   @db.VarChar(32)
+  details        String?  @db.VarChar(2000)
+  reporterDigest String   @db.Char(64)
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([articleId])
+}
+
+model RateLimit {
+  key       String   @id @db.VarChar(96)
+  count     Int      @default(1)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+// Private bounded snapshots; the original public ID and editing key remain on Article.
+model ArticleVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  articleId     String   @db.Uuid
+  article       Article  @relation(fields: [articleId], references: [internalId], onDelete: Cascade)
+  version       Int
+  title         String   @db.VarChar(240)
+  content       Json
+  schemaVersion Int      @default(1)
+  showViewCount Boolean  @default(true)
+  bytes         Int
+  createdAt     DateTime @default(now())
+
+  @@unique([articleId, version])
+  @@index([articleId, createdAt])
+}

@@ -1,0 +1,12 @@
+[Unit]
+Description=Verso private database and media backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/verso
+ExecStart=/opt/verso/scripts/backup.sh
+UMask=0077
+TimeoutStartSec=15min
+Nice=10

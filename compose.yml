@@ -1,0 +1,82 @@
+name: verso
+services:
+  app:
+    build: { context: ., target: runner }
+    image: verso-app:2.0.0
+    env_file: .env
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    depends_on:
+      db: {condition: service_healthy}
+      storage: {condition: service_healthy}
+    networks: [private]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 768m
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: unless-stopped
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks:
+      private: {aliases: [verso-database]}
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 512m
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  storage:
+    image: dxflrs/garage:v2.4.1
+    command: [/garage, server, --single-node, --default-bucket]
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: ${S3_ACCESS_KEY_ID}
+      GARAGE_DEFAULT_SECRET_KEY: ${S3_SECRET_ACCESS_KEY}
+      GARAGE_DEFAULT_BUCKET: ${S3_BUCKET}
+      RUST_LOG: warn
+    restart: unless-stopped
+    volumes: [storagedata:/data, ./garage.toml:/etc/garage.toml:ro]
+    networks:
+      private: {aliases: [verso-storage]}
+    healthcheck:
+      test: [CMD, /garage, status]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 384m
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  migrate:
+    profiles: [tools]
+    image: verso-migration:2.0.0
+    build: {context: ., target: migration}
+    env_file: .env
+    networks: [private]
+    depends_on: {db: {condition: service_healthy}}
+  caddy:
+    profiles: [standalone]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes: [./infra/Caddyfile:/etc/caddy/Caddyfile:ro, caddydata:/data, caddyconfig:/config]
+    networks: [private]
+    depends_on: {app: {condition: service_healthy}}
+volumes:
+  pgdata:
+  storagedata:
+  caddydata:
+  caddyconfig:
+networks:
+  private:

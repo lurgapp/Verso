@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Verso backup at 04:20 Moscow time
+
+[Timer]
+OnCalendar=*-*-* 04:20:00 Europe/Moscow
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,43 @@
+# Verso HTTP BEGIN
+server {
+  listen 80;
+  server_name verso.example.com;
+  location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; default_type text/plain; }
+  location / { return 301 https://verso.example.com$request_uri; }
+}
+# Verso HTTP END
+
+# Verso TLS BEGIN
+limit_req_zone $binary_remote_addr zone=verso_read:10m rate=10r/s;
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name verso.example.com;
+  ssl_certificate /etc/letsencrypt/live/verso.example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/verso.example.com/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  add_header Strict-Transport-Security "max-age=31536000" always;
+  client_max_body_size 33m;
+  access_log off;
+  # For a CDN, configure real_ip_header and trusted proxy ranges explicitly.
+  resolver 127.0.0.11 valid=10s ipv6=off;
+  set $verso_upstream http://verso-app:3000;
+  limit_req_status 429;
+  location ^~ /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+    default_type text/plain;
+  }
+  location / {
+    limit_req zone=verso_read burst=50 nodelay;
+    proxy_pass $verso_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    # A bounded video conversion can spend up to 115 s in native tools.
+    proxy_read_timeout 150s;
+    proxy_send_timeout 30s;
+  }
+}
+# Verso TLS END

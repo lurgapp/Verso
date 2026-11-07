@@ -1,0 +1,51 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Download, FileText, History, Type } from 'lucide-react';
+import { usePreferences } from './preferences';
+import { Dialog, ErrorMessage } from './ui';
+import { api, readOwnership } from '@/lib/client/storage';
+import type { PublicArticle } from '@/lib/types';
+import { downloadFile, htmlDocument, markdownDocument, plainDocumentText, printDocument, type WritingDocument } from '@/lib/client/document-files';
+import './writing-tools.css';
+
+type Typography = { family:'sans'|'serif'|'mono'; size:'small'|'medium'|'large'; line:'compact'|'normal'|'relaxed'; width:'narrow'|'standard'|'wide' };
+const DEFAULT_TYPE:Typography = { family:'sans',size:'medium',line:'normal',width:'standard' };
+function validTypography(value: unknown):Typography { const source = value as Typography | null; return { family:source && ['sans','serif','mono'].includes(source.family) ? source.family : 'sans', size:source && ['small','medium','large'].includes(source.size) ? source.size : 'medium', line:source && ['compact','normal','relaxed'].includes(source.line) ? source.line : 'normal', width:source && ['narrow','standard','wide'].includes(source.width) ? source.width : 'standard' }; }
+export function useLocalTypography(scope:'editor'|'reader', applyToSurface = true) {
+  const [value,setValue] = useState<Typography>(DEFAULT_TYPE);
+  useEffect(() => { const sync = () => { try { setValue(validTypography(JSON.parse(localStorage.getItem(`verso-typography-${scope}`) ?? 'null'))); } catch {} }; sync(); window.addEventListener('verso-typography',sync); return () => window.removeEventListener('verso-typography',sync); },[scope]);
+  useEffect(() => { if (!applyToSurface) return; const surface = document.querySelector<HTMLElement>(scope === 'editor' ? '.writing-surface' : '.article-main'); if (!surface) return; const previous = { ...surface.dataset }; Object.assign(surface.dataset,{font:value.family,fontSize:value.size,lineHeight:value.line,contentWidth:value.width}); return () => { for(const key of ['font','fontSize','lineHeight','contentWidth']) { if(previous[key]) surface.dataset[key] = previous[key]; else delete surface.dataset[key]; } }; },[scope,value,applyToSurface]);
+  const update = useCallback((next:Typography) => { setValue(next); try { localStorage.setItem(`verso-typography-${scope}`,JSON.stringify(next)); window.dispatchEvent(new Event('verso-typography')); } catch {} },[scope]);
+  return [value,update] as const;
+}
+export function TypographyForm({scope}:{scope:'editor'|'reader'}) {
+  const {language,theme,setTheme,t} = usePreferences(); const [value,update] = useLocalTypography(scope,false); const ru=language==='ru';
+  const settings:[keyof Typography,string,string[],string[]][] = [['family',ru?'Шрифт':'Font family',['sans','serif','mono'],ru?['Без засечек','С засечками','Моноширинный']:['Sans-serif','Serif','Monospace']],['size',ru?'Размер текста':'Font size',['small','medium','large'],ru?['Маленький','Средний','Большой']:['Small','Medium','Large']],['line',ru?'Межстрочный интервал':'Line height',['compact','normal','relaxed'],ru?['Компактный','Обычный','Свободный']:['Compact','Normal','Relaxed']],['width',ru?'Ширина страницы':'Content width',['narrow','standard','wide'],ru?['Узкая','Обычная','Широкая']:['Narrow','Standard','Wide']]];
+  return <div className="dialog-stack">{settings.map(([key,label,values,labels])=><label className="menu-setting" key={key}>{label}<select aria-label={label} value={value[key]} onChange={event=>update({...value,[key]:event.target.value})}>{values.map((option,index)=><option key={option} value={option}>{labels[index]}</option>)}</select></label>)}<label className="menu-setting">{t('Theme')}<select aria-label={t('Theme')} value={theme} onChange={event=>setTheme(event.target.value as typeof theme)}><option value="system">{t('System')}</option><option value="light">{t('Light')}</option><option value="dark">{t('Dark')}</option></select></label><p className="muted">{ru?'Настройки сохраняются только на этом устройстве.':'These preferences stay on this device.'}</p></div>;
+}
+export function ReaderTypography() { useLocalTypography('reader'); const {language}=usePreferences();const [open,setOpen]=useState(false);return <><button className="menu-item" onClick={()=>setOpen(true)}><Type size={16}/>{language==='ru'?'Настройки чтения':'Reading preferences'}</button>{open&&<Dialog title={language==='ru'?'Настройки чтения':'Reading preferences'} onClose={()=>setOpen(false)}><TypographyForm scope="reader"/></Dialog>}</>; }
+
+
+export function PublishedHistory({article,onRestored}:{article:PublicArticle;onRestored?:(article:PublicArticle)=>void}) {
+  const {language}=usePreferences();const ru=language==='ru';const [open,setOpen]=useState(false);const [versions,setVersions]=useState<{version:number;title:string;createdAt:string}[]>([]);const [snapshot,setSnapshot]=useState<(WritingDocument&{version:number;createdAt:string})|null>(null);const [error,setError]=useState('');const [busy,setBusy]=useState(false);const [compare,setCompare]=useState(false);const key=useRef('');const [currentArticle,setCurrentArticle]=useState(article);
+  useEffect(()=>setCurrentArticle(article),[article.id,article.version]);
+  async function load(){setOpen(true);setBusy(true);setError('');try{key.current=(await readOwnership(article.id))?.editKey??'';const result=await api<{versions:typeof versions}>(`/api/v1/articles/${article.id}/history`,{headers:{Authorization:`Bearer ${key.current}`},cache:'no-store'});setVersions(result.versions);}catch(exception){setError(exception instanceof Error?exception.message:'Could not read history.');}finally{setBusy(false);}}
+  async function preview(version:number){setBusy(true);setError('');try{const result=await api<{revision?:typeof snapshot;snapshot?:typeof snapshot}>(`/api/v1/articles/${article.id}/history/${version}`,{headers:{Authorization:`Bearer ${key.current}`},cache:'no-store'});setSnapshot(result.revision??result.snapshot??null);}catch(exception){setError(exception instanceof Error?exception.message:'Could not read version.');}finally{setBusy(false);}}
+  async function restore(){if(!snapshot)return;setBusy(true);setError('');try{const result=await api<{article:PublicArticle}>(`/api/v1/articles/${article.id}/history/${snapshot.version}/restore`,{method:'POST',headers:{Authorization:`Bearer ${key.current}`},body:JSON.stringify({version:currentArticle.version})});setCurrentArticle(result.article);setOpen(false);onRestored?.(result.article);if(!onRestored)location.reload();}catch(exception){setError(exception instanceof Error?exception.message:'Could not restore version.');}finally{setBusy(false);}}
+  return <><button className="menu-item" onClick={()=>void load()}><History size={16}/>{ru?'История публикации':'Publication history'}</button>{open&&<Dialog title={ru?'История публикации':'Publication history'} onClose={()=>!busy&&setOpen(false)}>{error&&<ErrorMessage>{error}</ErrorMessage>}<p className="muted">{ru?'Восстановление создаст новую версию. Адрес статьи сохранится.':'Restoring creates a new version and keeps the article URL.'}</p>{busy&&<p role="status">…</p>}<div className="snapshot-list">{versions.map(version=><button className="snapshot-button" key={version.version} disabled={busy} onClick={()=>void preview(version.version)}><span>v{version.version} · {new Date(version.createdAt).toLocaleString(language)}</span><strong>{version.title}</strong></button>)}{!busy&&!versions.length&&<p>{ru?'Предыдущих версий пока нет.':'No previous versions yet.'}</p>}</div>{snapshot&&<section className="history-preview"><h3>{snapshot.title} · v{snapshot.version}</h3><button className="text-button" onClick={()=>setCompare(value=>!value)}>{ru?'Сравнить с текущей версией':'Compare with current version'}</button><div className={compare?'history-comparison':''}>{compare&&<div><h4>{ru?'Текущая':'Current'} · v{currentArticle.version}</h4><pre>{plainDocumentText(currentArticle.content)}</pre></div>}<div>{compare&&<h4>{ru?'Выбранная':'Selected'} · v{snapshot.version}</h4>}<pre>{plainDocumentText(snapshot.content)}</pre></div></div><button className="primary-button" disabled={busy} onClick={()=>void restore()}>{ru?'Восстановить эту версию':'Restore this version'}</button></section>}</Dialog>}</>;
+}
+
+export function DocumentExports({value,html,markdown,filename='verso-story'}:{value:WritingDocument|(()=>WritingDocument);html:string|(()=>string);markdown:string|(()=>string);filename?:string}) {
+  const {language}=usePreferences();const ru=language==='ru';const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+  const documentValue=()=>typeof value==='function'?value():value;
+  async function exportFile(format:'markdown'|'html'|'text'|'pdf'){
+    if(busy)return;setBusy(true);setError('');
+    try{const current=documentValue();if(format==='pdf')await printDocument(current);
+      else if(format==='html')downloadFile(await htmlDocument(current,typeof html==='function'?html():html),`${filename}.html`,'text/html');
+      else if(format==='markdown')downloadFile(markdownDocument(current,typeof markdown==='function'?markdown():markdown),`${filename}.md`,'text/markdown');
+      else downloadFile(`${current.title}\n\n${plainDocumentText(current.content)}`,`${filename}.txt`,'text/plain');
+    }catch(exception){setError(exception instanceof Error?exception.message:(ru?'Экспорт не удался.':'Export failed.'));}finally{setBusy(false);}
+  }
+  return <><button className="menu-item" disabled={busy} onClick={()=>void exportFile('markdown')}><FileText size={16}/>{ru?'Экспорт Markdown (без потерь)':'Export Markdown (lossless)'}</button><button className="menu-item" disabled={busy} onClick={()=>void exportFile('html')}><Download size={16}/>{ru?'Экспорт HTML':'Export HTML'}</button><button className="menu-item" disabled={busy} onClick={()=>void exportFile('text')}><Download size={16}/>{ru?'Экспорт текста':'Export plain text'}</button><button className="menu-item" disabled={busy} onClick={()=>void exportFile('pdf')}><Download size={16}/>{ru?'Экспорт PDF / печать':'Export PDF / print'}</button>{busy&&<span role="status" className="muted">{ru?'Подготовка документа…':'Preparing document…'}</span>}{error&&<ErrorMessage>{error}</ErrorMessage>}</>;
+}

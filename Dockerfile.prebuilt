@@ -1,0 +1,11 @@
+# The deployment pipeline builds/verifies locally and uploads this runtime bundle.
+FROM node:22-bookworm-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/* && groupadd --gid 1001 verso && useradd --uid 1001 --gid verso verso
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
+COPY --chown=verso:verso .next/standalone ./
+COPY --chown=verso:verso .next/static ./.next/static
+COPY --chown=verso:verso public ./public
+USER verso
+EXPOSE 3000
+CMD ["node","server.js"]

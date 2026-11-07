@@ -1,0 +1,10 @@
+# Existing reverse-proxy integration; no public app, database, or storage ports.
+services:
+  app:
+    networks:
+      private: {}
+      ingress: {aliases: [verso-app]}
+networks:
+  ingress:
+    external: true
+    name: ${VERSO_INGRESS_NETWORK:-verso-ingress}
