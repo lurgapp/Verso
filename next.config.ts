@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   output: 'standalone', poweredByHeader: false,
+  // Media is validated and resized by Verso; the unused optimizer adds an input surface.
+  images: { unoptimized: true },
   experimental: { cpus: 2 },
   async headers() { return [{source:'/:path*', headers:[
     {key:'X-Content-Type-Options',value:'nosniff'},

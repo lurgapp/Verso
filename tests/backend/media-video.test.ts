@@ -89,3 +89,25 @@ test("upload admission bounds multipart/storage work and releases after success 
   await assert.rejects(() => withMediaUpload(async () => { throw failure; }), (error: unknown) => error === failure);
   assert.equal(await withMediaUpload(async () => "next upload"), "next upload");
 });
+
+
+test("media tools do not inherit application credentials", async () => {
+  const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const directory = await mkdtemp(join(tmpdir(), "verso-tool-env-"));
+  const originalPath = process.env.PATH;
+  const originalSecret = process.env.VERSO_PRIVATE_TEST_SECRET;
+  try {
+    await writeFile(join(directory, "ffprobe"), '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ secret: process.env.VERSO_PRIVATE_TEST_SECRET, locale: process.env.LC_ALL }));\n', { mode: 0o700 });
+    process.env.PATH = `${directory}:${originalPath}`;
+    process.env.VERSO_PRIVATE_TEST_SECRET = "synthetic-secret-not-for-child-processes";
+    const output = JSON.parse((await runMediaTool("ffprobe", ["-version"])).toString());
+    assert.equal(output.secret, undefined);
+    assert.equal(output.locale, "C");
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+    if (originalSecret === undefined) delete process.env.VERSO_PRIVATE_TEST_SECRET; else process.env.VERSO_PRIVATE_TEST_SECRET = originalSecret;
+    await rm(directory, { recursive: true, force: true });
+  }
+});

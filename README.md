@@ -28,7 +28,7 @@ GIF, Animated WebP и APNG сохраняются как Animated WebP с отд
 cp .env.example .env
 # Заполните .env собственными случайными секретами и PUBLIC_BASE_URL.
 python3 scripts/configure-storage.py
-docker compose build app migrate
+docker compose build app migrate db
 docker compose up -d db storage
 docker compose run --rm migrate
 docker compose --profile standalone up -d app caddy

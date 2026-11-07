@@ -1,0 +1,8 @@
+FROM postgres:16.14-alpine3.24
+# Keep PostgreSQL 16 and the existing volume format; patch the OS packages.
+# su-exec supplies the entrypoint's privilege drop without Go CLI dependencies.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache su-exec \
+    && grep -q 'exec gosu postgres' /usr/local/bin/docker-entrypoint.sh \
+    && sed -i 's/exec gosu postgres/exec su-exec postgres/' /usr/local/bin/docker-entrypoint.sh \
+    && rm -f /usr/local/bin/gosu

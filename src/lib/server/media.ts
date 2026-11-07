@@ -86,5 +86,10 @@ export async function imageResponse(request: Request, key: string): Promise<Resp
   const { client, bucket } = storage();
   const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}) }));
   if (!object.Body) throw new HttpError(404, "NOT_FOUND", "This media could not be found.");
+  const expectedBytes = range ? range.end - range.start + 1 : record.bytes;
+  if (object.ContentLength !== expectedBytes) {
+    await object.Body.transformToWebStream().cancel();
+    throw new HttpError(503, "MEDIA_UNAVAILABLE", "This media is temporarily unavailable.");
+  }
   return new Response(object.Body.transformToWebStream(), { status: range ? 206 : 200, headers });
 }

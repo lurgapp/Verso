@@ -2,10 +2,15 @@ name: verso
 services:
   app:
     build: { context: ., target: runner }
-    image: verso-app:2.0.0
+    image: verso-app:2.0.1
     env_file: .env
     restart: unless-stopped
     init: true
+    read_only: true
+    pids_limit: 256
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,uid=1001,gid=1001,mode=1777
+      - /app/.next/cache:rw,noexec,nosuid,nodev,size=64m,uid=1001,gid=1001,mode=0700
     stop_grace_period: 30s
     depends_on:
       db: {condition: service_healthy}
@@ -22,7 +27,8 @@ services:
     mem_limit: 768m
     logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
   db:
-    image: postgres:16-alpine
+    build: { context: ., dockerfile: Dockerfile.database }
+    image: verso-postgres:16.14-security-20261107
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -59,7 +65,7 @@ services:
     logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
   migrate:
     profiles: [tools]
-    image: verso-migration:2.0.0
+    image: verso-migration:2.0.1
     build: {context: ., target: migration}
     env_file: .env
     networks: [private]

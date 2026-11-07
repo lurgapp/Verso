@@ -11,7 +11,7 @@ cp .env.example .env
 chmod 600 .env
 # Заполните .env своими значениями перед следующими командами.
 python3 scripts/configure-storage.py
-docker compose build app migrate
+docker compose build app migrate db
 docker compose up -d db storage
 docker compose run --rm migrate
 docker compose --profile standalone up -d app caddy
@@ -24,7 +24,7 @@ Standalone Caddy занимает порты 80/443, выпускает и об�
 Задайте `VERSO_INGRESS_NETWORK` равным имени собственной Docker-сети reverse proxy. Сеть должна существовать. Override присоединяет к ней только приложение с alias `verso-app`.
 
 ```bash
-docker compose -f compose.yml -f compose.production.yml build app migrate
+docker compose -f compose.yml -f compose.production.yml build app migrate db
 docker compose -f compose.yml -f compose.production.yml up -d db storage
 docker compose -f compose.yml -f compose.production.yml run --rm migrate
 docker compose -f compose.yml -f compose.production.yml up -d app

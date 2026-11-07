@@ -32,3 +32,5 @@ private/
 node_modules/
 .next/
 .runtime/
+
+/infra/media-source/*.tar.xz

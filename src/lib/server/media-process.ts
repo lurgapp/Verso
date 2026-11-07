@@ -33,7 +33,7 @@ export function invalidMedia(message = "This file could not be decoded as safe m
  * a hard wall-clock kill. Never return decoder diagnostics or temporary paths. */
 export async function runMediaTool(tool: "ffmpeg" | "ffprobe", args: string[], maximumOutput = 1024 * 1024, timeoutMs = 30_000): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const child = spawn(tool, ["-hide_banner", "-loglevel", "error", "-max_alloc", "67108864", ...args], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, AV_LOG_FORCE_NOCOLOR: "1" } });
+    const child = spawn(tool, ["-hide_banner", "-loglevel", "error", "-max_alloc", "67108864", ...args], { stdio: ["ignore", "pipe", "pipe"], env: { NODE_ENV: "production", PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin", LANG: "C", LC_ALL: "C", AV_LOG_FORCE_NOCOLOR: "1" } });
     const chunks: Buffer[] = [];
     let size = 0;
     let failure: HttpError | undefined;

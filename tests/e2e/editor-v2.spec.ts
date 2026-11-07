@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import sharp from 'sharp';
+import type { Editor } from '@tiptap/core';
 import { test } from './fixtures';
 
 async function open(page: Page, content?: unknown[]) {
@@ -8,6 +9,8 @@ async function open(page: Page, content?: unknown[]) {
   await expect(page.getByText('Saved on this device', { exact: true })).toBeVisible();
   if (content) {
     await page.getByLabel('Import draft file', { exact: true }).setInputFiles({ name: 'editor-v2.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'verso-draft', version: 1, title: 'Editor V2 verification', content: { type: 'doc', content } })) });
+    await expect(page.getByText('Draft imported', { exact: true })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Editor V2 verification');
   }
   return editor;
 }
@@ -101,9 +104,14 @@ test('footnotes renumber after editing and deletion; TOC follows heading edits',
 
 test('keyboard block moves keep the nested block intact and undo independently', async ({ page }) => {
   const editor = await open(page, [paragraph('Before'), { type: 'bulletList', content: [{ type: 'listItem', content: [paragraph('Nested list')] }] }, paragraph('After')]);
-  await editor.locator('li p').click(); await editor.press('Alt+Shift+ArrowDown'); expect((await editor.locator(':scope>p').allTextContents()).filter(Boolean)).toEqual(['Before','After']);
-  await expect(editor.locator(':scope>ul').last()).toHaveText('Nested list'); await editor.press('Control+z');
-  const nodes = await editor.evaluate(element => [...element.children].map(child => child.tagName)); expect(nodes.slice(0, 3)).toEqual(['P', 'UL', 'P']);
+  await editor.locator('li p').click();
+  await expect.poll(() => editor.evaluate(element => (element as HTMLElement & { editor: Editor }).editor.state.selection.$from.parent.textContent)).toBe('Nested list');
+  await page.keyboard.press('Alt+Shift+ArrowDown');
+  const topLevelTags = () => editor.evaluate(element => [...element.children].slice(0, 3).map(child => child.tagName));
+  await expect.poll(topLevelTags).toEqual(['P', 'P', 'UL']);
+  expect((await editor.locator(':scope>p').allTextContents()).filter(Boolean)).toEqual(['Before','After']);
+  await expect(editor.locator(':scope>ul').last()).toHaveText('Nested list'); await page.keyboard.press('Control+z');
+  await expect.poll(topLevelTags).toEqual(['P', 'UL', 'P']);
 });
 
 test('image editing retains caption, alt, alignment and responsive intrinsic metadata', async ({ page }) => {
